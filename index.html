@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>LightNotes</title>
-  <link rel="stylesheet" href="app.css" />
+  <link rel="stylesheet" href="app.css?v=5" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -28,6 +28,7 @@
       <button id="b" title="Bold (⌘B)"><b>B</b></button>
       <button id="i" title="Italic (⌘I)"><i>I</i></button>
       <button id="u" title="Underline (⌘U)"><u>U</u></button>
+      <button id="highlight" title="Highlight Paragraph">🔆</button>
       <button id="ul" title="Bullet List">• List</button>
       <div class="spacer"></div>
       <label id="zoomCtl" title="Zoom">
@@ -37,11 +38,18 @@
       </label>
       <span id="status"></span>
     </div>
+    <div id="notification" class="notification hidden">
+      <span id="notificationText"></span>
+      <div class="notification-actions">
+        <button id="notificationAction" class="notification-btn">Export Now</button>
+        <button id="notificationDismiss" class="notification-btn secondary">Dismiss</button>
+      </div>
+    </div>
     <input id="title" placeholder="Title" />
     <div id="editor" contenteditable="true" spellcheck="true"></div>
   </main>
   <script src="vendor/jszip.min.js"></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>
 

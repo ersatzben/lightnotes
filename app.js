@@ -75,11 +75,35 @@ function checkBackupReminder() {
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   
   if (!lastBackup || (now - parseInt(lastBackup)) > sevenDays) {
-    if (confirm('It\'s been a while since your last backup. Export your notes now?')) {
-      exportAll();
-      localStorage.setItem('ln_last_backup', String(now));
-    }
+    showBackupNotification();
   }
+}
+
+function showBackupNotification() {
+  const notification = $('notification');
+  const notificationText = $('notificationText');
+  const actionBtn = $('notificationAction');
+  const dismissBtn = $('notificationDismiss');
+  
+  notificationText.textContent = "It's been a while since your last backup. Consider exporting your notes.";
+  notification.classList.remove('hidden');
+  
+  actionBtn.onclick = () => {
+    exportAll();
+    localStorage.setItem('ln_last_backup', String(Date.now()));
+    hideBackupNotification();
+  };
+  
+  dismissBtn.onclick = () => {
+    hideBackupNotification();
+    // Set a shorter reminder period (3 days) if dismissed
+    localStorage.setItem('ln_last_backup', String(Date.now() - (4 * 24 * 60 * 60 * 1000)));
+  };
+}
+
+function hideBackupNotification() {
+  const notification = $('notification');
+  notification.classList.add('hidden');
 }
 
 function handleMarkdownShortcuts(e) {
@@ -102,7 +126,14 @@ function handleMarkdownShortcuts(e) {
     range.setStart(textNode, start);
     range.setEnd(textNode, start + boldMatch[0].length);
     
-    document.execCommand('insertHTML', false, `<b>${boldText}</b>`);
+    document.execCommand('insertHTML', false, `<b>${boldText}</b> `);
+    
+    // Reset bold formatting for subsequent text
+    setTimeout(() => {
+      if (document.queryCommandState('bold')) {
+        document.execCommand('bold', false);
+      }
+    }, 0);
     return;
   }
   
@@ -115,8 +146,36 @@ function handleMarkdownShortcuts(e) {
     range.setStart(textNode, start);
     range.setEnd(textNode, start + italicMatch[0].length);
     
-    document.execCommand('insertHTML', false, `<i>${italicText}</i>`);
+    document.execCommand('insertHTML', false, `<i>${italicText}</i> `);
+    
+    // Reset italic formatting for subsequent text
+    setTimeout(() => {
+      if (document.queryCommandState('italic')) {
+        document.execCommand('italic', false);
+      }
+    }, 0);
     return;
+  }
+}
+
+function toggleParagraphHighlight() {
+  const sel = window.getSelection();
+  if (sel.rangeCount === 0) return;
+  
+  const range = sel.getRangeAt(0);
+  let container = range.commonAncestorContainer;
+  
+  // Find the paragraph element
+  while (container && container.nodeType !== Node.ELEMENT_NODE) {
+    container = container.parentNode;
+  }
+  
+  while (container && container.tagName !== 'P' && container !== els.editor) {
+    container = container.parentNode;
+  }
+  
+  if (container && container.tagName === 'P') {
+    container.classList.toggle('highlighted-para');
   }
 }
 
@@ -149,9 +208,14 @@ function cleanHtml(html) {
           if (child.tagName === 'A' && name === 'href') {
             try { new URL(value, document.baseURI); } catch { child.removeAttribute('href'); }
             child.setAttribute('rel', 'noopener');
+          } else if (child.tagName === 'P' && name === 'class' && value === 'highlighted-para') {
+            // Allow highlighted-para class on p elements
+            continue;
           } else if (name.startsWith('on')) {
             child.removeAttribute(attr.name);
-          } else if (!['href','rel'].includes(name)) {
+          } else if (!['href','rel','class'].includes(name)) {
+            child.removeAttribute(attr.name);
+          } else if (name === 'class' && value !== 'highlighted-para') {
             child.removeAttribute(attr.name);
           }
         }
@@ -178,7 +242,6 @@ async function refreshList(selectId) {
     const mainDiv = document.createElement('div');
     mainDiv.className = 'note-main';
     mainDiv.textContent = n.title || '(untitled)';
-    mainDiv.onclick = () => openNote(n.id);
     
     const metaDiv = document.createElement('div');
     metaDiv.className = 'note-meta';
@@ -234,6 +297,12 @@ async function refreshList(selectId) {
     
     titleDiv.appendChild(mainDiv);
     titleDiv.appendChild(metaDiv);
+    
+    li.onclick = (e) => {
+      // Don't trigger note opening if clicking on action buttons
+      if (e.target.closest('.note-actions')) return;
+      openNote(n.id);
+    };
     
     li.appendChild(titleDiv);
     els.notes.appendChild(li);
@@ -338,6 +407,7 @@ function bindToolbar() {
   $('b').onclick = () => { ensureFocus(); document.execCommand('bold'); };
   $('i').onclick = () => { ensureFocus(); document.execCommand('italic'); };
   $('u').onclick = () => { ensureFocus(); document.execCommand('underline'); };
+  $('highlight').onclick = () => { ensureFocus(); toggleParagraphHighlight(); };
   $('ul').onclick = () => { ensureFocus(); document.execCommand('insertUnorderedList'); };
 }
 
@@ -348,6 +418,9 @@ function bindShortcuts() {
     if (k === 'n') { e.preventDefault(); onNew(); }
     else if (k === 'f') { e.preventDefault(); els.search.focus(); }
     else if (k === 'backspace') { e.preventDefault(); onDeleteCurrent(); }
+    else if (k === 'b' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('bold'); }
+    else if (k === 'i' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('italic'); }
+    else if (k === 'u' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('underline'); }
   });
 }
 

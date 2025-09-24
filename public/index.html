@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LightNotes</title>
+  <link rel="stylesheet" href="app.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="LightNotes" />
+</head>
+<body>
+  <aside id="list">
+    <div class="sidebar-header">
+      <button id="new" title="New (⌘N)">+ New Note</button>
+    </div>
+    <input id="search" placeholder="Search" />
+    <ul id="notes"></ul>
+    <div class="sidebar-actions">
+      <button id="exp" title="Export">Export</button>
+      <button id="imp" title="Import">Import</button>
+      <input id="importFile" type="file" accept=".zip" style="display:none" />
+    </div>
+    <div class="sidebar-resizer"></div>
+  </aside>
+  <main>
+    <div id="toolbar">
+      <button id="b" title="Bold (⌘B)"><b>B</b></button>
+      <button id="i" title="Italic (⌘I)"><i>I</i></button>
+      <button id="u" title="Underline (⌘U)"><u>U</u></button>
+      <button id="ul" title="Bullet List">• List</button>
+      <div class="spacer"></div>
+      <label id="zoomCtl" title="Zoom">
+        <span>Zoom</span>
+        <input id="zoomRange" type="range" min="0.8" max="1.8" step="0.05" value="1" />
+        <span id="zoomVal">100%</span>
+      </label>
+      <span id="status"></span>
+    </div>
+    <input id="title" placeholder="Title" />
+    <div id="editor" contenteditable="true" spellcheck="true"></div>
+  </main>
+  <script src="vendor/jszip.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
+
+

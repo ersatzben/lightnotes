@@ -168,7 +168,6 @@ aside#list {
 
 .sidebar-header {
   padding: 12px;
-  border-bottom: 1px solid var(--border);
 }
 
 .sidebar-header #new {
@@ -191,6 +190,18 @@ button {
   border-radius: 8px;
   padding: 8px 10px;
   cursor: pointer;
+}
+
+/* Uniform toolbar button sizing */
+#toolbar button {
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: normal;
 }
 
 main {
@@ -216,47 +227,43 @@ main {
 
 #toolbar .spacer { flex: 1; }
 
-#zoomCtl { 
-  display: flex; 
-  align-items: center; 
-  gap: 6px; 
-  color: var(--muted); 
-  font-size: 13px;
-}
-#zoomCtl input[type="range"] { 
-  width: 100px; 
-  height: 4px;
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
   background: var(--border);
-  outline: none;
-  border-radius: 2px;
-  -webkit-appearance: none;
+  margin: 0 4px;
 }
-#zoomCtl input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-radius: 50%;
+
+#fontSelect {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
   cursor: pointer;
-}
-#zoomCtl input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-}
-#zoomVal { 
-  width: 40px; 
-  text-align: right; 
-  color: var(--muted);
-  font-size: 12px;
+  margin-right: 8px;
 }
 
 #editor {
   padding: 24px 28px 60px;
   overflow: auto;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* Font family classes for editor */
+#editor.font-sans {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+#editor.font-serif {
+  font-family: "Times New Roman", Times, Georgia, "New York", serif;
+}
+
+#editor.font-mono {
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
 }
 
 #editor:focus { outline: none; }

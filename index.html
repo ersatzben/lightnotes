@@ -28,14 +28,17 @@
       <button id="b" title="Bold (⌘B)"><b>B</b></button>
       <button id="i" title="Italic (⌘I)"><i>I</i></button>
       <button id="u" title="Underline (⌘U)"><u>U</u></button>
-      <button id="highlight" title="Highlight Paragraph">🔆</button>
-      <button id="ul" title="Bullet List">• List</button>
+      <button id="highlight" title="Highlight Paragraph">🅷</button>
+      <button id="ul" title="Bullet List">•</button>
+      <div class="toolbar-separator"></div>
+      <button id="textSizeDown" title="Decrease Text Size">A-</button>
+      <button id="textSizeUp" title="Increase Text Size">A+</button>
+      <select id="fontSelect" title="Font Family">
+        <option value="sans">Sans</option>
+        <option value="serif">Serif</option>
+        <option value="mono">Mono</option>
+      </select>
       <div class="spacer"></div>
-      <label id="zoomCtl" title="Zoom">
-        <span>Zoom</span>
-        <input id="zoomRange" type="range" min="0.8" max="1.8" step="0.05" value="1" />
-        <span id="zoomVal">100%</span>
-      </label>
       <span id="status"></span>
     </div>
     <div id="notification" class="notification hidden">

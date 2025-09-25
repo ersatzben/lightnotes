@@ -572,20 +572,34 @@ async function boot() {
     document.execCommand('styleWithCSS', false, true);
   } catch {}
 
-  // Zoom controls
-  els.zoomRange = $('zoomRange');
-  els.zoomVal = $('zoomVal');
+  // Text size controls
+  els.textSizeDown = $('textSizeDown');
+  els.textSizeUp = $('textSizeUp');
   const savedZoom = parseFloat(localStorage.getItem('ln_zoom') || '1');
   zoomScale = isFinite(savedZoom) ? savedZoom : 1;
   applyZoom(zoomScale);
-  els.zoomRange.value = String(zoomScale);
-  els.zoomVal.textContent = Math.round(zoomScale * 100) + '%';
-  els.zoomRange.addEventListener('input', (e) => {
-    const v = parseFloat(e.target.value);
-    zoomScale = Math.min(1.8, Math.max(0.8, v));
+  
+  els.textSizeDown.addEventListener('click', () => {
+    zoomScale = Math.max(0.8, zoomScale - 0.1);
     applyZoom(zoomScale);
-    els.zoomVal.textContent = Math.round(zoomScale * 100) + '%';
     localStorage.setItem('ln_zoom', String(zoomScale));
+  });
+  
+  els.textSizeUp.addEventListener('click', () => {
+    zoomScale = Math.min(1.8, zoomScale + 0.1);
+    applyZoom(zoomScale);
+    localStorage.setItem('ln_zoom', String(zoomScale));
+  });
+
+  // Font controls
+  els.fontSelect = $('fontSelect');
+  const savedFont = localStorage.getItem('ln_font') || 'sans';
+  applyFont(savedFont);
+  els.fontSelect.value = savedFont;
+  els.fontSelect.addEventListener('change', (e) => {
+    const font = e.target.value;
+    applyFont(font);
+    localStorage.setItem('ln_font', font);
   });
 
   // Open the first note or create a starter
@@ -610,9 +624,23 @@ if (document.readyState === 'loading') {
 window.__app = { refreshList, openNote };
 
 function applyZoom(scale) {
-  els.editor.style.transformOrigin = 'top left';
-  els.editor.style.transform = `scale(${scale})`;
+  // Remove transform scaling and use font-size only for proper text reflow
+  els.editor.style.transform = '';
+  els.editor.style.transformOrigin = '';
+  els.editor.style.width = '';
+  els.editor.style.maxWidth = '';
+  
+  // Scale the font size and line height proportionally
   els.editor.style.fontSize = `${Math.round(14 * scale)}px`;
+  els.editor.style.lineHeight = `${1.5}`;
+}
+
+function applyFont(fontFamily) {
+  // Remove any existing font classes
+  els.editor.classList.remove('font-sans', 'font-serif', 'font-mono');
+  
+  // Add the selected font class
+  els.editor.classList.add(`font-${fontFamily}`);
 }
 
 

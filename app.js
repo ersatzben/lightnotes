@@ -176,6 +176,9 @@ function toggleParagraphHighlight() {
   
   if (container && container.tagName === 'P') {
     container.classList.toggle('highlighted-para');
+    // Trigger save since DOM manipulation doesn't fire input event
+    status('Saving…');
+    saveDebounced();
   }
 }
 

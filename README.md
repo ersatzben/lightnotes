@@ -1,105 +1,80 @@
-# LightNotes - Safari Web App
+# LightNotes
 
-A lightweight, offline-first note-taking app built for Safari that stores data locally using the Origin Private File System (OPFS) with localStorage fallback.
+A tiny, offline‑first notes app optimized for Safari with sub‑200ms startup. All data stays on your device using OPFS (with localStorage fallback). No accounts, no sync, no telemetry.
 
-## Features
+## What you get
 
-### Core Functionality (per PLAN.md)
-- ✅ **OPFS Storage** - Private filesystem with localStorage fallback
-- ✅ **Rich Text Editor** - Bold, italic, underline, bullet lists via contenteditable
-- ✅ **Offline Support** - Service worker caches all assets for offline use
-- ✅ **Export/Import** - Full backup/restore via ZIP files using JSZip
-- ✅ **Search** - Real-time filtering of notes by title and content
-- ✅ **Autosave** - Debounced saving (400ms) with status indicator
-- ✅ **Keyboard Shortcuts** - ⌘N (new), ⌘F (search), ⌘Backspace (delete)
+- Notes list with search, pin, duplicate, and delete
+- Title field synced with the sidebar
+- Rich text editing: bold, italic, underline, strikethrough, bullet lists, links
+- Paragraph highlight toggle
+- Markdown shortcuts: `**bold**`, `*italic*`, `~~strike~~`
+- Toolbar buttons show active state based on caret position
+- Text size controls (80–180%) and font family selector (Sans/Serif/Mono)
+- Autosave with status indicator
+- Global to‑do sidebar on the right (add / toggle / delete)
+- Resizable sidebars (left and right), widths persisted
+- Offline support via Service Worker
+- Export/Import all notes as a ZIP (JSZip)
+- Backup reminder after 7 days
 
-### Enhanced Features (v1 additions)
-- ✅ **Title Field** - Dedicated title input above editor with sidebar sync
-- ✅ **Zoom Control** - Adjustable editor zoom (80%-180%) with persistence
-- ✅ **Pin Notes** - Star notes to keep them at the top of the sidebar
-- ✅ **Duplicate Notes** - One-click note duplication
-- ✅ **Recent Indicators** - Shows "Today", "Yesterday", or "X days ago"
-- ✅ **Cursor Memory** - Remembers editing position when switching notes
-- ✅ **Sidebar Resizing** - Drag to resize sidebar (200-500px, persisted)
-- ✅ **Markdown Shortcuts** - Auto-converts `**bold**` and `*italic*` text
-- ✅ **Backup Reminders** - Prompts to export after 7 days
-- ✅ **Creation Dates** - Hover dates to see full creation timestamp
-- ✅ **Visual Polish** - Amber background for pinned notes, translucent controls
+## Run locally
 
-## Installation
+```bash
+cd /Users/benjohnson/dev/notetaking
+python3 -m http.server 8000
+```
 
-1. **Start Local Server**:
-   ```bash
-   cd public
-   python3 -m http.server 5173
-   ```
+Open `http://127.0.0.1:8000` in Safari. Optional: Safari → File → Add to Dock.
 
-2. **Open in Safari**: Navigate to `http://localhost:5173`
+## Keyboard shortcuts
 
-3. **Install as App**: Safari → File → **Add to Dock** (macOS Sonoma+)
+- ⌘N – New note
+- ⌘F – Focus search
+- ⌘⌫ – Delete current note
+- ⌘B / ⌘I / ⌘U – Bold / Italic / Underline
+- ⌘⇧X – Strikethrough
 
-## File Structure
+## File structure
 
 ```
-public/
-├── index.html          # Main app layout
-├── app.css            # Styling and dark theme
-├── app.js             # UI logic, autosave, shortcuts
-├── opfs.js            # Low-level OPFS operations
-├── notes.js           # Notes CRUD with localStorage fallback
-├── sw.js              # Service worker for offline support
+.
+├── index.html       # App layout (sidebar, toolbar, editor, to‑do panel)
+├── app.css          # Styling, dark theme, layout, resizers
+├── app.js           # UI logic, editor, to‑dos, autosave, shortcuts
+├── notes.js         # Notes CRUD with OPFS + localStorage fallback
+├── opfs.js          # Low‑level OPFS helpers
+├── sw.js            # Service worker for offline support
 └── vendor/
-    └── jszip.min.js   # ZIP export/import functionality
+    └── jszip.min.js # ZIP export/import
 ```
 
-## Data Model
+## Data & storage
 
-- **Index**: `/index.json` - Array of note metadata
-- **Notes**: `/notes/<id>.html` - Individual note content
-- **Storage**: OPFS (primary) or localStorage (fallback)
+- Storage is OPFS when available; falls back to localStorage
+- Index: array of note metadata (id, title, created, modified, pinned, cursorPos)
+- Notes are stored as HTML
+- Global to‑dos are stored in localStorage
 
-### Note Structure
-```json
-{
-  "id": "uuid",
-  "title": "Note title",
-  "created": 1234567890,
-  "modified": 1234567890,
-  "pinned": false,
-  "cursorPos": 0
-}
-```
-
-## Keyboard Shortcuts
-
-- **⌘N** - Create new note
-- **⌘F** - Focus search
-- **⌘Backspace** - Delete current note
-- **⌘B/I/U** - Bold/Italic/Underline (standard browser shortcuts)
-
-## Technical Details
-
-- **Storage**: Origin Private File System (OPFS) with localStorage fallback
-- **Editor**: contenteditable with execCommand for formatting
-- **Offline**: Service worker caches all assets
-- **Export Format**: ZIP containing index.json + note HTML files
-- **Browser**: Safari 17+ (OPFS support), degrades gracefully to localStorage
-- **Dependencies**: JSZip for export/import functionality
+Paste sanitization allows a safe subset of tags (B, I, U, S/STRIKE, UL/OL/LI, P, BR, A) and preserves the `highlighted-para` class on paragraphs; event handlers and unsafe attributes are stripped.
 
 ## Performance
 
-- **Boot time**: <200ms for 1000+ notes (loads index only)
-- **Lazy loading**: Note content loaded on selection
-- **Atomic writes**: OPFS createWritable() prevents corruption
-- **Debounced saves**: Prevents excessive disk writes
+- Startup is minimal: load index, defer everything else
+- Debounced saves (400ms)
+- Atomic writes in OPFS to avoid corruption
 
-## Privacy & Security
+## Privacy
 
-- **Local-only**: All data stays in OPFS/localStorage, no external calls
-- **Origin-scoped**: Data isolated per domain
-- **Paste sanitization**: Strips scripts and unsafe HTML
-- **No analytics**: Zero external tracking
+- Everything stays local; no network calls except for loading JSZip from `vendor/`
+- No analytics, no tracking, no external storage
 
----
+## Export / Import
 
-Built following the lightweight philosophy: essential features, excellent performance, maximum privacy.
+- Export creates a ZIP with `index.json` and `notes/<id>.html`
+- Import restores from a ZIP created by the app
+
+## Browser support
+
+- Optimized for Safari 17+
+- Degrades gracefully to localStorage when OPFS is unavailable

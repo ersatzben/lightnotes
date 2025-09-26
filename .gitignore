@@ -1,0 +1,18 @@
+# Documentation files to exclude
+PLAN.md
+COMPLETED.md
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+.fseventsd
+.Spotlight-V100
+.Trashes
+Icon?
+._*
+
+# Optional: common temp files
+.TemporaryItems
+*.swp
+

@@ -204,6 +204,9 @@ button {
   font-weight: normal;
 }
 
+/* Slightly reduce <s> thickness rendering differences */
+#toolbar #s s { text-decoration-thickness: from-font; }
+
 main {
   display: grid;
   grid-template-rows: auto auto 1fr;

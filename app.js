@@ -156,6 +156,26 @@ function handleMarkdownShortcuts(e) {
     }, 0);
     return;
   }
+
+  // Check for ~~strikethrough~~ pattern
+  const strikeMatch = text.match(/~~([^~]+)~~$/);
+  if (strikeMatch && cursorPos >= text.length) {
+    const strikeText = strikeMatch[1];
+    const start = text.lastIndexOf('~~' + strikeText + '~~');
+
+    range.setStart(textNode, start);
+    range.setEnd(textNode, start + strikeMatch[0].length);
+
+    document.execCommand('insertHTML', false, `<s>${strikeText}</s> `);
+
+    // Reset strikethrough formatting for subsequent text if browser toggled state
+    setTimeout(() => {
+      if (document.queryCommandState && document.queryCommandState('strikeThrough')) {
+        document.execCommand('strikeThrough', false);
+      }
+    }, 0);
+    return;
+  }
 }
 
 function toggleParagraphHighlight() {
@@ -195,7 +215,7 @@ function sanitiseHtmlOnPaste(e) {
 function cleanHtml(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
-  const allowed = new Set(['B','I','U','UL','OL','LI','P','BR','A']);
+  const allowed = new Set(['B','I','U','S','STRIKE','UL','OL','LI','P','BR','A']);
   const walk = node => {
     for (const child of Array.from(node.children)) {
       if (!allowed.has(child.tagName)) {
@@ -333,7 +353,10 @@ async function openNote(id) {
     if (currentNote.cursorPos) {
       setSelectionPosition(currentNote.cursorPos);
     }
-    els.editor.focus();
+    // Only auto-focus editor if it has content, otherwise let user start with title
+    if (els.editor.innerText.trim()) {
+      els.editor.focus();
+    }
   }, 50);
   
   for (const li of els.notes.querySelectorAll('li')) li.classList.toggle('active', li.dataset.id === id);
@@ -369,7 +392,8 @@ async function onNew() {
   const entry = await createNote();
   await refreshList(entry.id);
   await openNote(entry.id);
-  els.editor.focus();
+  // Focus title first to give editor time to initialize properly
+  els.title.focus();
 }
 
 async function onDeleteNote(id) {
@@ -410,6 +434,7 @@ function bindToolbar() {
   $('b').onclick = () => { ensureFocus(); document.execCommand('bold'); };
   $('i').onclick = () => { ensureFocus(); document.execCommand('italic'); };
   $('u').onclick = () => { ensureFocus(); document.execCommand('underline'); };
+  $('s').onclick = () => { ensureFocus(); document.execCommand('strikeThrough'); };
   $('highlight').onclick = () => { ensureFocus(); toggleParagraphHighlight(); };
   $('ul').onclick = () => { ensureFocus(); document.execCommand('insertUnorderedList'); };
 }
@@ -424,6 +449,7 @@ function bindShortcuts() {
     else if (k === 'b' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('bold'); }
     else if (k === 'i' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('italic'); }
     else if (k === 'u' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('underline'); }
+    else if ((k === 'x' || k === 'x') && e.shiftKey && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('strikeThrough'); }
   });
 }
 
@@ -517,6 +543,22 @@ async function boot() {
     handleMarkdownShortcuts(e);
     status('Saving…'); 
     saveDebounced(); 
+  });
+  
+  // Ensure proper paragraph structure when editor gets focus
+  els.editor.addEventListener('focus', () => {
+    // If editor is empty or has no proper paragraph structure, add one
+    if (!els.editor.innerHTML.trim() || !els.editor.querySelector('p')) {
+      els.editor.innerHTML = '<p><br></p>';
+      // Place cursor at start of paragraph
+      const p = els.editor.querySelector('p');
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.setStart(p, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
   });
   els.editor.addEventListener('paste', sanitiseHtmlOnPaste);
   

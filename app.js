@@ -725,6 +725,39 @@ async function boot() {
   if (savedWidth) {
     document.body.style.gridTemplateColumns = `${savedWidth}px 1fr 280px`;
   }
+
+  // Right sidebar resizing
+  const todoResizer = document.querySelector('.todo-resizer');
+  let isResizingRight = false;
+
+  todoResizer.addEventListener('mousedown', (e) => {
+    isResizingRight = true;
+    document.body.style.cursor = 'col-resize';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizingRight) return;
+    const bodyRect = document.body.getBoundingClientRect();
+    const fromRight = Math.max(200, Math.min(500, bodyRect.right - e.clientX));
+    const leftWidth = parseInt(localStorage.getItem('ln_sidebar_width') || '280', 10);
+    document.body.style.gridTemplateColumns = `${leftWidth}px 1fr ${fromRight}px`;
+    localStorage.setItem('ln_right_sidebar_width', String(fromRight));
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizingRight) {
+      isResizingRight = false;
+      document.body.style.cursor = '';
+    }
+  });
+
+  // Restore right sidebar width
+  const savedRight = localStorage.getItem('ln_right_sidebar_width');
+  if (savedRight) {
+    const leftWidth = parseInt(localStorage.getItem('ln_sidebar_width') || '280', 10);
+    document.body.style.gridTemplateColumns = `${leftWidth}px 1fr ${savedRight}px`;
+  }
   els.title.addEventListener('input', debounce(async () => {
     if (!currentNote) return;
     const t = els.title.value.trim();

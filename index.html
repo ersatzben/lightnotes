@@ -52,6 +52,16 @@
     <input id="title" placeholder="Title" />
     <div id="editor" contenteditable="true" spellcheck="true"></div>
   </main>
+  <aside id="todo">
+    <div class="todo-header">
+      <div class="todo-title">To‑Dos</div>
+      <div class="todo-input-row">
+        <input id="todoInput" placeholder="Add a task" />
+        <button id="todoAdd" title="Add task">+</button>
+      </div>
+    </div>
+    <ul id="todoList"></ul>
+  </aside>
   <script src="vendor/jszip.min.js"></script>
   <script type="module" src="app.js?v=5"></script>
 </body>

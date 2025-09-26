@@ -12,7 +12,7 @@
 html, body { height: 100%; margin: 0; }
 body {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px 1fr 280px;
   grid-template-rows: 100%;
   background: var(--bg);
   color: var(--text);
@@ -204,6 +204,12 @@ button {
   font-weight: normal;
 }
 
+#toolbar button.active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: rgba(79, 140, 255, 0.12);
+}
+
 /* Slightly reduce <s> thickness rendering differences */
 #toolbar #s s { text-decoration-thickness: from-font; }
 
@@ -354,6 +360,74 @@ main {
 
 @media (max-width: 900px) {
   body { grid-template-columns: 220px 1fr; }
+  aside#todo { display: none; }
+}
+
+/* Right To-Do sidebar */
+aside#todo {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+}
+
+.todo-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.todo-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.todo-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+#todoInput {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+#todoList {
+  list-style: none;
+  margin: 0;
+  padding: 8px 8px 8px 0;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+
+#todoList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.todo-text { flex: 1; }
+
+.todo-text.done { color: var(--muted); text-decoration: line-through; }
+
+.todo-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.todo-del:hover {
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff6464;
 }
 
 

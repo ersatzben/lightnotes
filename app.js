@@ -250,6 +250,74 @@ function cleanHtml(html) {
   return doc.body.innerHTML;
 }
 
+// --- Simple GLOBAL To-Do list ---
+let currentTodos = [];
+
+function getTodoStorageKey() {
+  return 'ln_todos_global';
+}
+
+function loadTodos() {
+  try {
+    const raw = localStorage.getItem(getTodoStorageKey());
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  return [];
+}
+
+function saveTodos(todos) {
+  try {
+    localStorage.setItem(getTodoStorageKey(), JSON.stringify(todos));
+  } catch {}
+}
+
+function renderTodos() {
+  if (!els.todoList) return;
+  els.todoList.innerHTML = '';
+  for (const item of currentTodos) {
+    const li = document.createElement('li');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!item.done;
+    cb.onchange = () => {
+      item.done = cb.checked;
+      saveTodos(currentTodos);
+      txt.classList.toggle('done', !!item.done);
+    };
+
+    const txt = document.createElement('div');
+    txt.className = `todo-text${item.done ? ' done' : ''}`;
+    txt.textContent = item.text;
+
+    const del = document.createElement('button');
+    del.className = 'todo-del';
+    del.textContent = '×';
+    del.title = 'Delete task';
+    del.onclick = () => {
+      currentTodos = currentTodos.filter(t => t.id !== item.id);
+      saveTodos(currentTodos);
+      renderTodos();
+    };
+
+    li.appendChild(cb);
+    li.appendChild(txt);
+    li.appendChild(del);
+    els.todoList.appendChild(li);
+  }
+}
+
+function addTodoFromInput() {
+  const text = (els.todoInput.value || '').trim();
+  if (!text) return;
+  const id = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  currentTodos.push({ id, text, done: false });
+  saveTodos(currentTodos);
+  els.todoInput.value = '';
+  renderTodos();
+}
+
 async function refreshList(selectId) {
   const items = await listNotes();
   els.notes.innerHTML = '';
@@ -453,6 +521,65 @@ function bindShortcuts() {
   });
 }
 
+// Lightweight toolbar active-state updater
+let rafPending = false;
+function scheduleUpdateToolbarState() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    if (!els.editor) return;
+    // Only compute when selection is inside editor
+    const sel = window.getSelection();
+    let inEditor = false;
+    if (sel && sel.rangeCount) {
+      let node = sel.anchorNode;
+      while (node) {
+        if (node === els.editor) { inEditor = true; break; }
+        node = node.parentNode;
+      }
+    }
+    if (!inEditor) {
+      for (const id of ['b','i','u','s','ul','highlight']) {
+        const btn = $(id);
+        if (btn) btn.classList.remove('active');
+      }
+      return;
+    }
+
+    const states = {
+      b: document.queryCommandState('bold'),
+      i: document.queryCommandState('italic'),
+      u: document.queryCommandState('underline'),
+      s: document.queryCommandState('strikeThrough')
+    };
+    for (const id of ['b','i','u','s']) {
+      const btn = $(id);
+      if (btn) btn.classList.toggle('active', !!states[id]);
+    }
+
+    // List active state
+    const listActive = document.queryCommandState('insertUnorderedList');
+    const ulBtn = $('ul');
+    if (ulBtn) ulBtn.classList.toggle('active', !!listActive);
+
+    // Highlight paragraph active state
+    let highlightActive = false;
+    if (sel && sel.rangeCount) {
+      let node = sel.anchorNode;
+      while (node && node !== els.editor) {
+        if (node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('highlighted-para')) {
+          highlightActive = true;
+          break;
+        }
+        node = node.parentNode;
+      }
+    }
+    const hiBtn = $('highlight');
+    if (hiBtn) hiBtn.classList.toggle('active', highlightActive);
+  });
+}
+
 function downloadBlob(blob, filename) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -510,6 +637,10 @@ async function boot() {
   els.expBtn = $('exp');
   els.impBtn = $('imp');
   els.impFile = $('importFile');
+  // To-Do sidebar elements
+  els.todoInput = $('todoInput');
+  els.todoAdd = $('todoAdd');
+  els.todoList = $('todoList');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 
@@ -543,6 +674,7 @@ async function boot() {
     handleMarkdownShortcuts(e);
     status('Saving…'); 
     saveDebounced(); 
+    scheduleUpdateToolbarState();
   });
   
   // Ensure proper paragraph structure when editor gets focus
@@ -561,6 +693,8 @@ async function boot() {
     }
   });
   els.editor.addEventListener('paste', sanitiseHtmlOnPaste);
+  els.editor.addEventListener('mouseup', scheduleUpdateToolbarState);
+  els.editor.addEventListener('keyup', scheduleUpdateToolbarState);
   
   // Sidebar resizing
   const resizer = document.querySelector('.sidebar-resizer');
@@ -575,7 +709,7 @@ async function boot() {
   document.addEventListener('mousemove', (e) => {
     if (!isResizing) return;
     const newWidth = Math.max(200, Math.min(500, e.clientX));
-    document.body.style.gridTemplateColumns = `${newWidth}px 1fr`;
+    document.body.style.gridTemplateColumns = `${newWidth}px 1fr 280px`;
     localStorage.setItem('ln_sidebar_width', String(newWidth));
   });
   
@@ -589,7 +723,7 @@ async function boot() {
   // Restore sidebar width
   const savedWidth = localStorage.getItem('ln_sidebar_width');
   if (savedWidth) {
-    document.body.style.gridTemplateColumns = `${savedWidth}px 1fr`;
+    document.body.style.gridTemplateColumns = `${savedWidth}px 1fr 280px`;
   }
   els.title.addEventListener('input', debounce(async () => {
     if (!currentNote) return;
@@ -646,6 +780,23 @@ async function boot() {
     applyFont(font);
     localStorage.setItem('ln_font', font);
   });
+
+  // To-Do controls (guard for Safari timing)
+  if (els.todoAdd) {
+    els.todoAdd.addEventListener('click', addTodoFromInput);
+  }
+  if (els.todoInput) {
+    els.todoInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addTodoFromInput();
+      }
+    });
+  }
+
+  // Load global todos once
+  currentTodos = loadTodos();
+  renderTodos();
 
   // Open the first note or create a starter
   const notes = await listNotes();

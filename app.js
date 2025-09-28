@@ -652,6 +652,8 @@ async function exportAll() {
   const zip = new JSZip();
   const idx = await listNotes();
   zip.file('index.json', JSON.stringify(idx));
+  // Include global todos in backup
+  try { zip.file('todos.json', JSON.stringify(loadTodos())); } catch {}
   const dir = zip.folder('notes');
   for (const n of idx) {
     const html = await readNote(n.id);
@@ -681,6 +683,18 @@ async function importZip(file) {
     await writeNote(entry.id, html);
   }
   await saveIndex(idx);
+  // Optionally restore todos.json if present
+  try {
+    const tf = zip.file('todos.json');
+    if (tf) {
+      const raw = await tf.async('string');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        currentTodos = parsed;
+        saveTodos(currentTodos);
+      }
+    }
+  } catch {}
   await refreshList();
 
   // After a manual import, push a clean snapshot to R2: remove old remote notes/todos, then upload current notes, index, and todos

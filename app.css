@@ -17,6 +17,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%; /* prevent Safari auto-zooming text */
 }
 
 aside#list {
@@ -51,6 +52,7 @@ aside#list {
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--text);
+  font-size: 16px; /* avoid input-focus zoom on iOS */
 }
 
 #notes {
@@ -202,6 +204,7 @@ button {
   justify-content: center;
   font-size: 14px;
   font-weight: normal;
+  touch-action: manipulation; /* reduce double-tap zoom */
 }
 
 #toolbar button.active {
@@ -330,6 +333,7 @@ main {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
+  font-size: 16px; /* avoid input-focus zoom on iOS */
 }
 .settings-actions {
   display: flex;
@@ -443,6 +447,7 @@ aside#todo {
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--text);
+  font-size: 16px; /* avoid input-focus zoom on iOS */
 }
 
 #todoList {

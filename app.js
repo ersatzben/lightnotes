@@ -408,6 +408,8 @@ async function refreshList(selectId) {
       // Don't trigger note opening if clicking on action buttons
       if (e.target.closest('.note-actions')) return;
       openNote(n.id);
+      // Close drawer on mobile after selecting a note
+      try { document.body.classList.remove('drawer-open'); } catch {}
     };
     
     li.appendChild(titleDiv);
@@ -757,7 +759,59 @@ async function boot() {
   els.todoAdd = $('todoAdd');
   els.todoList = $('todoList');
 
+  // Mobile UI controls
+  els.menuBtn = $('menuBtn');
+  els.tabNotes = $('tabNotes');
+  els.tabEditor = $('tabEditor');
+  els.tabTodos = $('tabTodos');
+
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+  
+  // Wire mobile controls (no-ops on desktop where elements are hidden)
+  if (els.menuBtn) {
+    els.menuBtn.addEventListener('click', () => {
+      document.body.classList.toggle('drawer-open');
+      // Close To-Do if opening drawer
+      if (document.body.classList.contains('drawer-open')) {
+        document.body.classList.remove('todo-open');
+      }
+    });
+  }
+  const setActiveTab = (active) => {
+    for (const id of ['tabNotes','tabEditor','tabTodos']) {
+      const el = $(id);
+      if (el) el.classList.toggle('active', id === active);
+    }
+  };
+  if (els.tabNotes) {
+    els.tabNotes.addEventListener('click', () => {
+      document.body.classList.add('drawer-open');
+      document.body.classList.remove('todo-open');
+      setActiveTab('tabNotes');
+    });
+  }
+  if (els.tabEditor) {
+    els.tabEditor.addEventListener('click', () => {
+      document.body.classList.remove('drawer-open');
+      document.body.classList.remove('todo-open');
+      setActiveTab('tabEditor');
+    });
+  }
+  if (els.tabTodos) {
+    els.tabTodos.addEventListener('click', () => {
+      const willOpen = !document.body.classList.contains('todo-open');
+      document.body.classList.remove('drawer-open');
+      document.body.classList.toggle('todo-open', willOpen);
+      setActiveTab(willOpen ? 'tabTodos' : 'tabEditor');
+    });
+  }
+  // Close overlays when resizing back to desktop widths
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) {
+      document.body.classList.remove('drawer-open','todo-open');
+      setActiveTab('tabEditor');
+    }
+  });
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'flush-queue') {

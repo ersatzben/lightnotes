@@ -3,6 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <title>LightNotes</title>
+  <script>
+    try {
+      const lw = localStorage.getItem('ln_left_w') || localStorage.getItem('ln_sidebar_width');
+      if (lw) document.documentElement.style.setProperty('--left-w', `${parseInt(lw, 10)}px`);
+      const rw = localStorage.getItem('ln_right_w') || localStorage.getItem('ln_right_sidebar_width');
+      if (rw) document.documentElement.style.setProperty('--right-w', `${parseInt(rw, 10)}px`);
+    } catch {}
+  </script>
   <link rel="stylesheet" href="app.css?v=5" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,11 +24,7 @@
     </div>
     <input id="search" placeholder="Search" />
     <ul id="notes"></ul>
-    <div class="sidebar-actions">
-      <button id="exp" title="Export">Export</button>
-      <button id="imp" title="Import">Import</button>
-      <input id="importFile" type="file" accept=".zip" style="display:none" />
-    </div>
+    <div class="sidebar-actions"></div>
     <div class="sidebar-resizer"></div>
   </aside>
   <main>
@@ -40,13 +44,34 @@
         <option value="mono">Mono</option>
       </select>
       <div class="spacer"></div>
-      <span id="status"></span>
+      <div id="indicator" title="Sync status">
+        <span id="syncDot" class="dot" title="Sync status"></span>
+      </div>
+      <button id="settingsBtn" title="Sync & Settings">⟳</button>
     </div>
-    <div id="notification" class="notification hidden">
-      <span id="notificationText"></span>
-      <div class="notification-actions">
-        <button id="notificationAction" class="notification-btn">Export Now</button>
-        <button id="notificationDismiss" class="notification-btn secondary">Dismiss</button>
+    <div id="settingsModal" class="hidden">
+      <div class="settings-card">
+        <div class="settings-row">
+          <label for="apiUrl">API URL</label>
+          <input id="apiUrl" placeholder="https://<your-worker-subdomain>.workers.dev" />
+        </div>
+        <div class="settings-row">
+          <label for="apiToken">Token</label>
+          <input id="apiToken" type="password" placeholder="Your LN_TOKEN" />
+        </div>
+        <div class="settings-row">
+          <label>Data</label>
+          <div>
+            <button id="exp" title="Export all">Export</button>
+            <button id="imp" title="Import from zip">Import</button>
+            <input id="importFile" type="file" accept=".zip" style="display:none" />
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button id="settingsSave">Save</button>
+          <button id="settingsClose" class="secondary">Close</button>
+          <span id="settingsStatus"></span>
+        </div>
       </div>
     </div>
     <input id="title" placeholder="Title" />
@@ -64,6 +89,7 @@
     <div class="todo-resizer"></div>
   </aside>
   <script src="vendor/jszip.min.js"></script>
+  <script type="module" src="sync.js"></script>
   <script type="module" src="app.js?v=5"></script>
 </body>
 </html>

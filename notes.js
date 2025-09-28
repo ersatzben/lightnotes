@@ -6,11 +6,16 @@ let indexFileHandle;
 let storageMode = 'opfs'; // 'opfs' | 'local'
 const LS_INDEX_KEY = 'ln_index_v1';
 const LS_NOTE_PREFIX = 'ln_note_';
+const LS_META_PREFIX = 'ln_meta_';
+let metaDirHandle; // OPFS directory for per-note metadata
 
 export async function initStore() {
   try {
     rootHandle = await fs.getRoot();
     notesDirHandle = await fs.getDir(rootHandle, 'notes');
+		// Ensure meta dir exists for per-note metadata
+		try { metaDirHandle = await fs.getDir(rootHandle, 'meta'); }
+		catch { metaDirHandle = await fs.createDir(rootHandle, 'meta'); }
     indexFileHandle = await fs.getFileHandle(rootHandle, 'index.json');
     try {
       const txt = await fs.readText(indexFileHandle);
@@ -184,4 +189,64 @@ export async function duplicateNote(id) {
   return entry;
 }
 
+
+// --- Per-note metadata (dirty/baseEtag/baseBody) ---
+// Stored in OPFS under meta/<id>.json or localStorage under ln_meta_<id>
+
+export async function getNoteMeta(id) {
+	try {
+		if (storageMode === 'local') {
+			const raw = localStorage.getItem(LS_META_PREFIX + id) || '{}';
+			const obj = JSON.parse(raw);
+			return obj && typeof obj === 'object' ? obj : {};
+		}
+		// OPFS
+		if (!metaDirHandle) {
+			try { metaDirHandle = await fs.getDir(rootHandle, 'meta'); }
+			catch { metaDirHandle = await fs.createDir(rootHandle, 'meta'); }
+		}
+		let fh;
+		try { fh = await fs.getFileHandle(metaDirHandle, `${id}.json`); }
+		catch { return {}; }
+		const txt = await fs.readText(fh);
+		return txt ? JSON.parse(txt) : {};
+	} catch {
+		return {};
+	}
+}
+
+export async function setNoteMeta(id, meta) {
+	try {
+		const safe = meta && typeof meta === 'object' ? meta : {};
+		if (storageMode === 'local') {
+			localStorage.setItem(LS_META_PREFIX + id, JSON.stringify(safe));
+			return;
+		}
+		if (!metaDirHandle) {
+			try { metaDirHandle = await fs.getDir(rootHandle, 'meta'); }
+			catch { metaDirHandle = await fs.createDir(rootHandle, 'meta'); }
+		}
+		const fh = await fs.getFileHandle(metaDirHandle, `${id}.json`);
+		await fs.writeText(fh, JSON.stringify(safe));
+	} catch {}
+}
+
+export async function setNoteDirty(id, dirty) {
+	const meta = await getNoteMeta(id);
+	meta.dirty = !!dirty;
+	await setNoteMeta(id, meta);
+}
+
+export async function isNoteDirty(id) {
+	const meta = await getNoteMeta(id);
+	return !!meta.dirty;
+}
+
+export async function setNoteBase(id, baseEtag, baseBody) {
+	const meta = await getNoteMeta(id);
+	meta.baseEtag = baseEtag || '';
+	if (typeof baseBody === 'string') meta.baseBody = baseBody;
+	meta.dirty = false;
+	await setNoteMeta(id, meta);
+}
 

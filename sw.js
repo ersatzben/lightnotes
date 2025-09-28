@@ -3,6 +3,7 @@ const ASSETS = [
   '/index.html',
   '/app.css',
   '/app.js',
+  '/sync.js',
   '/opfs.js',
   '/notes.js',
   '/vendor/jszip.min.js',
@@ -30,4 +31,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+
+// Background Sync
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'lightnotes-sync') {
+    event.waitUntil((async () => {
+      const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+      for (const client of clientsList) {
+        client.postMessage({ type: 'flush-queue' });
+      }
+    })());
+  }
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'request-sync') {
+    if ('sync' in self.registration) {
+      event.waitUntil(self.registration.sync.register('lightnotes-sync'));
+    }
+  }
+});
 

@@ -1,4 +1,5 @@
-import { initStore, listNotes, readNote, writeNote, createNote, deleteNote, updateTitleAndModified, togglePin, updateCursorPosition, duplicateNote } from './notes.js';
+import { initStore, listNotes, readNote, writeNote, createNote, deleteNote, updateTitleAndModified, togglePin, updateCursorPosition, duplicateNote, saveIndex, setNoteDirty, isNoteDirty, setNoteBase } from './notes.js';
+import { getIndex, putIndex, getNoteHtml, putNoteHtml, deleteNoteRemote, getTodosRemote, putTodosRemote, enqueueOperation, flushQueue, setupQueueRetry, listKeys } from './sync.js';
 
 const els = {};
 let currentNote = null; // { id, title, created, modified }
@@ -12,7 +13,16 @@ function debounce(fn, ms = 400) {
 }
 
 function status(text) {
-  els.status.textContent = text;
+  // Keep compat no-op for old calls
+}
+
+function setSyncDot(state) {
+  const dot = document.getElementById('syncDot');
+  if (!dot) return;
+  dot.classList.remove('sync-green', 'sync-amber', 'sync-red');
+  if (state === 'syncing') dot.classList.add('sync-amber');
+  else if (state === 'synced') dot.classList.add('sync-green');
+  else if (state === 'offline') dot.classList.add('sync-red');
 }
 
 function stripTitleFrom(htmlOrText) {
@@ -69,42 +79,9 @@ function setSelectionPosition(pos) {
   }
 }
 
-function checkBackupReminder() {
-  const lastBackup = localStorage.getItem('ln_last_backup');
-  const now = Date.now();
-  const sevenDays = 7 * 24 * 60 * 60 * 1000;
-  
-  if (!lastBackup || (now - parseInt(lastBackup)) > sevenDays) {
-    showBackupNotification();
-  }
-}
-
-function showBackupNotification() {
-  const notification = $('notification');
-  const notificationText = $('notificationText');
-  const actionBtn = $('notificationAction');
-  const dismissBtn = $('notificationDismiss');
-  
-  notificationText.textContent = "It's been a while since your last backup. Consider exporting your notes.";
-  notification.classList.remove('hidden');
-  
-  actionBtn.onclick = () => {
-    exportAll();
-    localStorage.setItem('ln_last_backup', String(Date.now()));
-    hideBackupNotification();
-  };
-  
-  dismissBtn.onclick = () => {
-    hideBackupNotification();
-    // Set a shorter reminder period (3 days) if dismissed
-    localStorage.setItem('ln_last_backup', String(Date.now() - (4 * 24 * 60 * 60 * 1000)));
-  };
-}
-
-function hideBackupNotification() {
-  const notification = $('notification');
-  notification.classList.add('hidden');
-}
+function checkBackupReminder() {}
+function showBackupNotification() {}
+function hideBackupNotification() {}
 
 function handleMarkdownShortcuts(e) {
   const sel = window.getSelection();
@@ -115,6 +92,8 @@ function handleMarkdownShortcuts(e) {
   if (textNode.nodeType !== Node.TEXT_NODE) return;
   
   const text = textNode.textContent;
+  // Guard: skip processing on extremely long nodes to avoid perf pitfalls
+  if (text && text.length > 5000) return;
   const cursorPos = range.startOffset;
   
   // Check for **bold** pattern
@@ -216,6 +195,12 @@ function cleanHtml(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const allowed = new Set(['B','I','U','S','STRIKE','UL','OL','LI','P','BR','A']);
+  const safeHref = (url) => {
+    try {
+      const u = new URL(url, 'http://x');
+      return ['http:', 'https:', 'mailto:'].includes(u.protocol);
+    } catch { return false; }
+  };
   const walk = node => {
     for (const child of Array.from(node.children)) {
       if (!allowed.has(child.tagName)) {
@@ -229,8 +214,8 @@ function cleanHtml(html) {
           const name = attr.name.toLowerCase();
           const value = attr.value;
           if (child.tagName === 'A' && name === 'href') {
-            try { new URL(value, document.baseURI); } catch { child.removeAttribute('href'); }
-            child.setAttribute('rel', 'noopener');
+            if (!safeHref(value || '')) child.removeAttribute('href');
+            child.setAttribute('rel', 'noopener noreferrer');
           } else if (child.tagName === 'P' && name === 'class' && value === 'highlighted-para') {
             // Allow highlighted-para class on p elements
             continue;
@@ -266,10 +251,25 @@ function loadTodos() {
   return [];
 }
 
+const pushTodosRemoteDebounced = debounce(async () => {
+  try {
+    const todos = loadTodos();
+    await putTodosRemote(todos);
+  } catch (e) {
+    // enqueue todos for retry
+    try {
+      const todos = loadTodos();
+      enqueueOperation({ type: 'put_todos', todos });
+    } catch {}
+  }
+}, 500);
+
 function saveTodos(todos) {
   try {
     localStorage.setItem(getTodoStorageKey(), JSON.stringify(todos));
   } catch {}
+  // Best-effort remote push (ignore if not configured)
+  pushTodosRemoteDebounced();
 }
 
 function renderTodos() {
@@ -277,6 +277,7 @@ function renderTodos() {
   els.todoList.innerHTML = '';
   for (const item of currentTodos) {
     const li = document.createElement('li');
+    li.tabIndex = 0;
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -305,6 +306,20 @@ function renderTodos() {
     li.appendChild(txt);
     li.appendChild(del);
     els.todoList.appendChild(li);
+
+    // Keyboard support on list item
+    li.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        currentTodos = currentTodos.filter(t => t.id !== item.id);
+        saveTodos(currentTodos);
+        renderTodos();
+      }
+    });
   }
 }
 
@@ -438,7 +453,23 @@ const saveNow = async () => {
   const title = (els.title.value || stripTitleFrom(els.editor.innerText));
   await updateTitleAndModified(currentNote.id, title);
   await refreshList(currentNote.id);
-  status('Saved');
+  setSyncDot('synced');
+  // Remote push with LWW Plan A inside sync layer
+  try {
+    await putNoteHtml(currentNote.id, html);
+    const idx = await listNotes();
+    await putIndex(idx);
+    try { await setNoteBase(currentNote.id, '', html); } catch {}
+    try { await setNoteDirty(currentNote.id, false); } catch {}
+  } catch (e) {
+    // enqueue for retry when offline or not configured
+    try {
+      const idx = await listNotes();
+      enqueueOperation({ type: 'put_note', noteId: currentNote.id, html });
+      enqueueOperation({ type: 'put_index', index: idx });
+    } catch {}
+    setSyncDot('offline');
+  }
 };
 const saveDebounced = debounce(saveNow, 400);
 
@@ -472,6 +503,17 @@ async function onDeleteNote(id) {
   if (!confirm(`Delete "${title}"?`)) return;
   
   await deleteNote(id);
+  // Remote delete best-effort
+  try {
+    await deleteNoteRemote(id);
+    const idxNow = await listNotes();
+    await putIndex(idxNow);
+  } catch {}
+  // enqueue delete if failed
+  try {
+    const idxNow = await listNotes();
+    enqueueOperation({ type: 'delete_note', noteId: id, index: idxNow });
+  } catch {}
   
   // If we're deleting the currently open note, clear the editor
   if (currentNote && currentNote.id === id) {
@@ -509,15 +551,30 @@ function bindToolbar() {
 
 function bindShortcuts() {
   window.addEventListener('keydown', (e) => {
-    if (!e.metaKey) return;
     const k = e.key.toLowerCase();
-    if (k === 'n') { e.preventDefault(); onNew(); }
-    else if (k === 'f') { e.preventDefault(); els.search.focus(); }
-    else if (k === 'backspace') { e.preventDefault(); onDeleteCurrent(); }
-    else if (k === 'b' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('bold'); }
-    else if (k === 'i' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('italic'); }
-    else if (k === 'u' && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('underline'); }
-    else if ((k === 'x' || k === 'x') && e.shiftKey && document.activeElement === els.editor) { e.preventDefault(); document.execCommand('strikeThrough'); }
+
+    // Global meta shortcuts
+    if (e.metaKey) {
+      if (k === 'n') { e.preventDefault(); onNew(); return; }
+      if (k === 'backspace') { e.preventDefault(); onDeleteCurrent(); return; }
+      // Do not hijack Cmd+F unless search is already focused
+      if (k === 'f') {
+        if (document.activeElement === els.search) {
+          // allow typing in search box, but do not prevent default browser Find
+          return;
+        }
+        // let browser's find operate; do not preventDefault
+        return;
+      }
+    }
+
+    // Editor-scoped formatting shortcuts
+    if (e.metaKey && document.activeElement === els.editor) {
+      if (k === 'b') { e.preventDefault(); document.execCommand('bold'); }
+      else if (k === 'i') { e.preventDefault(); document.execCommand('italic'); }
+      else if (k === 'u') { e.preventDefault(); document.execCommand('underline'); }
+      else if (k === 'x' && e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
+    }
   });
 }
 
@@ -625,6 +682,40 @@ async function importZip(file) {
   }
   await saveIndex(idx);
   await refreshList();
+
+  // After a manual import, push a clean snapshot to R2: remove old remote notes/todos, then upload current notes, index, and todos
+  try {
+    setSyncDot('syncing');
+    // Delete remote notes
+    const remoteNoteKeys = await listKeys('notes/');
+    for (const key of remoteNoteKeys) {
+      const id = key.replace(/^notes\//, '').replace(/\.html$/, '');
+      if (id) {
+        try { await deleteNoteRemote(id); } catch {}
+      }
+    }
+    // Reset remote todos
+    try { await putTodosRemote([]); } catch {}
+    // Upload current notes first
+    const currentIdx = await listNotes();
+    for (const n of currentIdx) {
+      try {
+        const html = await readNote(n.id);
+        await putNoteHtml(n.id, html);
+      } catch {}
+    }
+    // Then upload index
+    await putIndex(currentIdx);
+    // Push current todos if any
+    try {
+      const todos = loadTodos();
+      await putTodosRemote(todos);
+    } catch {}
+    setSyncDot('synced');
+  } catch (e) {
+    console.warn('Remote reset/upload after import failed:', e);
+    setSyncDot('offline');
+  }
 }
 
 async function boot() {
@@ -633,6 +724,16 @@ async function boot() {
   els.editor = $('editor');
   els.title = $('title');
   els.status = $('status');
+  // indicator initial state
+  setSyncDot(navigator.onLine ? 'synced' : 'offline');
+  window.addEventListener('online', () => setSyncDot('synced'));
+  window.addEventListener('offline', () => setSyncDot('offline'));
+  els.settingsBtn = $('settingsBtn');
+  els.settingsModal = $('settingsModal');
+  els.apiUrl = $('apiUrl');
+  els.apiToken = $('apiToken');
+  els.settingsSave = $('settingsSave');
+  els.settingsClose = $('settingsClose');
   els.newBtn = $('new');
   els.expBtn = $('exp');
   els.impBtn = $('imp');
@@ -643,6 +744,13 @@ async function boot() {
   els.todoList = $('todoList');
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'flush-queue') {
+        try { flushQueue(); } catch {}
+      }
+    });
+  }
 
   try {
     await initStore();
@@ -670,11 +778,16 @@ async function boot() {
     }
   }
 
+  // Attempt startup sync with remote (non-fatal)
+  try { await syncStartup(); } catch (e) { console.warn('Startup sync skipped:', e && e.message); }
+  try { setupQueueRetry(); await flushQueue(); } catch {}
+
   els.editor.addEventListener('input', (e) => { 
     handleMarkdownShortcuts(e);
-    status('Saving…'); 
+    setSyncDot('syncing');
     saveDebounced(); 
     scheduleUpdateToolbarState();
+    if (currentNote) { try { setNoteDirty(currentNote.id, true); } catch {} }
   });
   
   // Ensure proper paragraph structure when editor gets focus
@@ -695,6 +808,14 @@ async function boot() {
   els.editor.addEventListener('paste', sanitiseHtmlOnPaste);
   els.editor.addEventListener('mouseup', scheduleUpdateToolbarState);
   els.editor.addEventListener('keyup', scheduleUpdateToolbarState);
+
+  // Flush saves on lifecycle events
+  window.addEventListener('pagehide', () => { try { saveNow(true); } catch {} }, { capture: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { try { saveNow(true); } catch {} }
+    if (document.visibilityState === 'visible') { try { focusSyncThrottled(); } catch {} }
+  });
+  window.addEventListener('pageshow', (e) => { try { focusSyncThrottled(); } catch {} });
   
   // Sidebar resizing
   const resizer = document.querySelector('.sidebar-resizer');
@@ -709,8 +830,8 @@ async function boot() {
   document.addEventListener('mousemove', (e) => {
     if (!isResizing) return;
     const newWidth = Math.max(200, Math.min(500, e.clientX));
-    document.body.style.gridTemplateColumns = `${newWidth}px 1fr 280px`;
-    localStorage.setItem('ln_sidebar_width', String(newWidth));
+    document.documentElement.style.setProperty('--left-w', `${newWidth}px`);
+    localStorage.setItem('ln_left_w', String(newWidth));
   });
   
   document.addEventListener('mouseup', () => {
@@ -720,11 +841,7 @@ async function boot() {
     }
   });
   
-  // Restore sidebar width
-  const savedWidth = localStorage.getItem('ln_sidebar_width');
-  if (savedWidth) {
-    document.body.style.gridTemplateColumns = `${savedWidth}px 1fr 280px`;
-  }
+  // Restore sidebar width is handled early in index.html via CSS var
 
   // Right sidebar resizing
   const todoResizer = document.querySelector('.todo-resizer');
@@ -740,9 +857,10 @@ async function boot() {
     if (!isResizingRight) return;
     const bodyRect = document.body.getBoundingClientRect();
     const fromRight = Math.max(200, Math.min(500, bodyRect.right - e.clientX));
-    const leftWidth = parseInt(localStorage.getItem('ln_sidebar_width') || '280', 10);
-    document.body.style.gridTemplateColumns = `${leftWidth}px 1fr ${fromRight}px`;
-    localStorage.setItem('ln_right_sidebar_width', String(fromRight));
+    const leftWidth = parseInt(localStorage.getItem('ln_left_w') || localStorage.getItem('ln_sidebar_width') || '280', 10);
+    document.documentElement.style.setProperty('--left-w', `${leftWidth}px`);
+    document.documentElement.style.setProperty('--right-w', `${fromRight}px`);
+    localStorage.setItem('ln_right_w', String(fromRight));
   });
 
   document.addEventListener('mouseup', () => {
@@ -752,12 +870,7 @@ async function boot() {
     }
   });
 
-  // Restore right sidebar width
-  const savedRight = localStorage.getItem('ln_right_sidebar_width');
-  if (savedRight) {
-    const leftWidth = parseInt(localStorage.getItem('ln_sidebar_width') || '280', 10);
-    document.body.style.gridTemplateColumns = `${leftWidth}px 1fr ${savedRight}px`;
-  }
+  // Restore right sidebar width handled early via CSS var
   els.title.addEventListener('input', debounce(async () => {
     if (!currentNote) return;
     const t = els.title.value.trim();
@@ -831,6 +944,50 @@ async function boot() {
   currentTodos = loadTodos();
   renderTodos();
 
+  // Settings UI
+  if (els.settingsBtn && els.settingsModal && els.apiUrl && els.apiToken && els.settingsSave && els.settingsClose) {
+    // Load existing values
+    try {
+      els.apiUrl.value = localStorage.getItem('ln_api_url') || '';
+      els.apiToken.value = localStorage.getItem('ln_token') || '';
+    } catch {}
+
+    const openSettings = () => { els.settingsModal.classList.remove('hidden'); };
+    const closeSettings = () => { els.settingsModal.classList.add('hidden'); };
+
+    els.settingsBtn.addEventListener('click', openSettings);
+    els.settingsClose.addEventListener('click', closeSettings);
+    els.settingsSave.addEventListener('click', async () => {
+      try {
+        const hadRemote = remoteConfigured();
+        const url = (els.apiUrl.value || '').trim().replace(/\/$/, '');
+        const token = (els.apiToken.value || '').trim();
+        if (url) localStorage.setItem('ln_api_url', url);
+        if (token) localStorage.setItem('ln_token', token);
+        const ss = $('settingsStatus');
+        if (ss) { ss.textContent = 'Saved'; setTimeout(() => { ss.textContent = ''; }, 1200); }
+        // On first-time configuration, perform a fresh pull of all notes/todos from R2
+        const hasRemoteNow = remoteConfigured();
+        if (!hadRemote && hasRemoteNow) {
+          try {
+            setSyncDot('syncing');
+            await pullAllFromRemote();
+            setSyncDot('synced');
+        // Set a short cool-off so immediate focus sync doesn't refetch
+        try { localStorage.setItem('ln_focus_cooloff', String(Date.now() + 3000)); } catch {}
+          } catch (e) {
+            console.warn('Initial remote pull failed:', e);
+            setSyncDot('offline');
+          }
+        }
+      } catch {}
+    });
+    // ESC closes
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') els.settingsModal.classList.add('hidden'); });
+    // Click outside closes
+    els.settingsModal.addEventListener('click', (e) => { if (e.target === els.settingsModal) els.settingsModal.classList.add('hidden'); });
+  }
+
   // Open the first note or create a starter
   const notes = await listNotes();
   if (notes.length) {
@@ -870,6 +1027,146 @@ function applyFont(fontFamily) {
   
   // Add the selected font class
   els.editor.classList.add(`font-${fontFamily}`);
+}
+
+// --- Remote sync bootstrap ---
+function remoteConfigured() {
+  try {
+    return !!(localStorage.getItem('ln_api_url') && localStorage.getItem('ln_token'));
+  } catch { return false; }
+}
+
+async function syncStartup() {
+  if (!remoteConfigured()) return;
+  // Ensure remote has index; if not, we'll create it on first PUT
+  try {
+    const res = await getIndex();
+    if (!res.unchanged && res.data) {
+      // If data is string, parse; otherwise accept array
+      const remoteIdx = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      // Merge: prefer local entries, add missing from remote
+      const localIdx = await listNotes();
+      const map = new Map(localIdx.map(n => [n.id, n]));
+      for (const entry of Array.isArray(remoteIdx) ? remoteIdx : []) {
+        if (!map.has(entry.id)) map.set(entry.id, entry);
+      }
+      const merged = Array.from(map.values());
+      await saveIndex(merged);
+      // Pull any missing note bodies
+      const haveIds = new Set((await listNotes()).map(n => n.id));
+      for (const entry of merged) {
+        try {
+          if (haveIds.has(entry.id)) {
+            // ensure file exists locally; read will throw if not present in OPFS
+            try { await readNote(entry.id); }
+            catch {
+              const noteRes = await getNoteHtml(entry.id);
+              if (!noteRes.unchanged && typeof noteRes.data === 'string') {
+                await writeNote(entry.id, noteRes.data);
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    // If remote empty, seed on first save; ignore
+  }
+  // Pull todos
+  try {
+    const t = await getTodosRemote();
+    if (!t.unchanged && t.data) {
+      const parsed = typeof t.data === 'string' ? JSON.parse(t.data) : t.data;
+      if (Array.isArray(parsed)) {
+        currentTodos = parsed;
+        saveTodos(currentTodos);
+        renderTodos();
+      }
+    }
+  } catch {}
+}
+
+async function pullAllFromRemote() {
+  // Pull index
+  try {
+    const res = await getIndex();
+    let idx = [];
+    if (!res.unchanged && res.data) {
+      idx = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!Array.isArray(idx)) idx = [];
+    }
+    // Save index locally
+    await saveIndex(idx);
+    // Pull each note body
+    for (const entry of idx) {
+      try {
+        const nr = await getNoteHtml(entry.id);
+        if (!nr.unchanged && typeof nr.data === 'string') {
+          await writeNote(entry.id, nr.data);
+        }
+      } catch {}
+    }
+  } catch {}
+  // Pull todos
+  try {
+    const t = await getTodosRemote();
+    if (!t.unchanged && t.data) {
+      const parsed = typeof t.data === 'string' ? JSON.parse(t.data) : t.data;
+      if (Array.isArray(parsed)) {
+        currentTodos = parsed;
+        saveTodos(currentTodos);
+        renderTodos();
+      }
+    }
+  } catch {}
+  // Refresh UI
+  await refreshList();
+}
+
+// --- Focus sync: push-first, pull-second (ETag-aware) ---
+let lastFocusSyncAt = 0;
+const focusSyncThrottled = debounce(() => { focusSync().catch(() => {}); }, 1000);
+
+async function focusSync() {
+  if (!remoteConfigured()) return;
+  const now = Date.now();
+  const coolOffUntil = parseInt(localStorage.getItem('ln_focus_cooloff') || '0', 10);
+  if (now < coolOffUntil) return;
+  setSyncDot('syncing');
+  try { await saveNow(true); } catch {}
+  try { await flushQueue(); } catch {}
+  try {
+    const res = await getIndex();
+    let idx = [];
+    if (!res.unchanged && res.data) {
+      idx = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!Array.isArray(idx)) idx = [];
+      await saveIndex(idx);
+    }
+    const localIdx = await listNotes();
+    const localIds = new Set(localIdx.map(n => n.id));
+    for (const entry of idx) {
+      if (!localIds.has(entry.id)) continue;
+      const dirty = await isNoteDirty(entry.id);
+      if (dirty) continue;
+      try {
+        const nr = await getNoteHtml(entry.id);
+        if (!nr.unchanged && typeof nr.data === 'string') {
+          await writeNote(entry.id, nr.data);
+          if (currentNote && currentNote.id === entry.id) {
+            const stillDirty = await isNoteDirty(entry.id);
+            if (!stillDirty) {
+              els.editor.innerHTML = nr.data;
+            }
+          }
+        }
+      } catch {}
+    }
+    setSyncDot('synced');
+  } catch (e) {
+    setSyncDot('offline');
+  }
+  lastFocusSyncAt = Date.now();
 }
 
 
